@@ -17,8 +17,10 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfBuffer = await generatePdfBuffer(brand);
+    const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
+    const arrayBuffer = await blob.arrayBuffer();
 
-    return new NextResponse(Buffer.from(pdfBuffer), {
+    return new NextResponse(Buffer.from(arrayBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${brand.brandName.replace(/[^a-zA-Z0-9]/g, '')}-brand-kit.pdf`,
@@ -74,22 +76,12 @@ async function generatePdfBuffer(brand: BrandSystem): Promise<Uint8Array> {
   const margin = 50;
   const maxWidth = 495;
 
-  // Helper functions
   const drawSection = (title: string, bodyText: string, startY: number) => {
-    page.drawText(title.toUpperCase(), {
-      x: margin,
-      y: startY,
-      size: 10,
-      font: bold,
-      color: rgb(0.6, 0.6, 0.6),
-    });
+    page.drawText(title.toUpperCase(), { x: margin, y: startY, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
     const lines = wrapText(bodyText, maxWidth, font, 11);
     let cy = startY - 16;
     for (const line of lines) {
-      if (cy < 50) {
-        page = doc.addPage([595.28, 841.89]);
-        cy = 800;
-      }
+      if (cy < 50) { page = doc.addPage([595.28, 841.89]); cy = 800; }
       page.drawText(line, { x: margin, y: cy, size: 11, font, color: rgb(0.22, 0.22, 0.22) });
       cy -= 16;
     }
@@ -99,10 +91,7 @@ async function generatePdfBuffer(brand: BrandSystem): Promise<Uint8Array> {
   const drawBulletList = (items: string[], startY: number, bullet: string) => {
     let cy = startY;
     for (const item of items) {
-      if (cy < 50) {
-        page = doc.addPage([595.28, 841.89]);
-        cy = 800;
-      }
+      if (cy < 50) { page = doc.addPage([595.28, 841.89]); cy = 800; }
       const text = `${bullet} ${item}`;
       const lines = wrapText(text, maxWidth, font, 10);
       for (const line of lines) {
@@ -114,122 +103,60 @@ async function generatePdfBuffer(brand: BrandSystem): Promise<Uint8Array> {
     return cy - 8;
   };
 
-  // ===== HEADER =====
-  // Gradient-like header background
-  page.drawRectangle({
-    x: 0,
-    y: 680,
-    width: 595.28,
-    height: 161.89,
-    color: primary,
-  });
-
-  page.drawText(brand.brandName, {
-    x: margin,
-    y: 760,
-    size: 32,
-    font: bold,
-    color: rgb(1, 1, 1),
-  });
-  page.drawText(brand.tagline, {
-    x: margin,
-    y: 732,
-    size: 14,
-    font: font,
-    color: rgb(0.95, 0.95, 0.95),
-  });
-
+  // HEADER
+  page.drawRectangle({ x: 0, y: 680, width: 595.28, height: 161.89, color: primary });
+  page.drawText(brand.brandName, { x: margin, y: 760, size: 32, font: bold, color: rgb(1, 1, 1) });
+  page.drawText(brand.tagline, { x: margin, y: 732, size: 14, font, color: rgb(0.95, 0.95, 0.95) });
   y = 660;
 
-  // ===== MISSION & VISION =====
+  // MISSION & VISION
   page.drawText('MISSION', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   const missionLines = wrapText(brand.mission, maxWidth, font, 11);
   y -= 16;
-  for (const line of missionLines) {
-    page.drawText(line, { x: margin, y, size: 11, font, color: rgb(0.22, 0.22, 0.22) });
-    y -= 16;
-  }
+  for (const line of missionLines) { page.drawText(line, { x: margin, y, size: 11, font, color: rgb(0.22, 0.22, 0.22) }); y -= 16; }
   y -= 8;
-
   page.drawText('VISION', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   const visionLines = wrapText(brand.vision, maxWidth, font, 11);
   y -= 16;
-  for (const line of visionLines) {
-    page.drawText(line, { x: margin, y, size: 11, font, color: rgb(0.22, 0.22, 0.22) });
-    y -= 16;
-  }
+  for (const line of visionLines) { page.drawText(line, { x: margin, y, size: 11, font, color: rgb(0.22, 0.22, 0.22) }); y -= 16; }
   y -= 16;
-
-  // Separator line
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: 545, y },
-    thickness: 0.5,
-    color: rgb(0.9, 0.9, 0.9),
-  });
+  page.drawLine({ start: { x: margin, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
   y -= 20;
 
-  // ===== TARGET AUDIENCE =====
+  // SECTIONS
   y = drawSection('Target Audience', brand.targetAudience, y);
   y -= 8;
 
-  // ===== VALUES =====
+  // VALUES
   page.drawText('CORE VALUES', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   y -= 16;
   for (const val of brand.values) {
-    if (y < 50) {
-      page = doc.addPage([595.28, 841.89]);
-      y = 800;
-    }
-    page.drawRectangle({
-      x: margin,
-      y: y - 2,
-      width: font.widthOfTextAtSize(val, 10) + 16,
-      height: 18,
-      color: rgb(0.95, 0.95, 0.95),
-    });
+    if (y < 50) { page = doc.addPage([595.28, 841.89]); y = 800; }
+    page.drawRectangle({ x: margin, y: y - 2, width: font.widthOfTextAtSize(val, 10) + 16, height: 18, color: rgb(0.95, 0.95, 0.95) });
     page.drawText(val, { x: margin + 8, y, size: 10, font: bold, color: primary });
     y -= 24;
   }
   y -= 8;
 
-  // ===== TONE OF VOICE =====
+  // TONE OF VOICE
   page.drawText('TONE OF VOICE', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   y -= 16;
   for (const tone of brand.toneOfVoice) {
-    if (y < 50) {
-      page = doc.addPage([595.28, 841.89]);
-      y = 800;
-    }
-    page.drawRectangle({
-      x: margin,
-      y: y - 2,
-      width: font.widthOfTextAtSize(tone, 10) + 16,
-      height: 18,
-      color: rgb(0.97, 0.94, 1),
-    });
+    if (y < 50) { page = doc.addPage([595.28, 841.89]); y = 800; }
+    page.drawRectangle({ x: margin, y: y - 2, width: font.widthOfTextAtSize(tone, 10) + 16, height: 18, color: rgb(0.97, 0.94, 1) });
     page.drawText(tone, { x: margin + 8, y, size: 10, font: bold, color: rgb(0.48, 0.24, 0.93) });
     y -= 24;
   }
   y -= 8;
 
-  // Separator
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: 545, y },
-    thickness: 0.5,
-    color: rgb(0.9, 0.9, 0.9),
-  });
+  page.drawLine({ start: { x: margin, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
   y -= 20;
 
-  // ===== COLOR PALETTE =====
+  // COLOR PALETTE
   page.drawText('COLOR PALETTE', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   y -= 20;
   for (const color of brand.colorPalette) {
-    if (y < 50) {
-      page = doc.addPage([595.28, 841.89]);
-      y = 800;
-    }
+    if (y < 50) { page = doc.addPage([595.28, 841.89]); y = 800; }
     const c = hexToRgb(color);
     page.drawRectangle({ x: margin, y: y - 2, width: 18, height: 18, color: c, borderColor: rgb(0.9, 0.9, 0.9), borderWidth: 0.5 });
     page.drawText(color, { x: margin + 26, y, size: 9, font: mono, color: rgb(0.42, 0.42, 0.42) });
@@ -237,100 +164,47 @@ async function generatePdfBuffer(brand: BrandSystem): Promise<Uint8Array> {
   }
   y -= 8;
 
-  // ===== TYPOGRAPHY =====
   y = drawSection('Typography', brand.typography, y);
   y -= 8;
-
-  // Separator
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: 545, y },
-    thickness: 0.5,
-    color: rgb(0.9, 0.9, 0.9),
-  });
+  page.drawLine({ start: { x: margin, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
   y -= 20;
 
-  // ===== LOGO PROMPT =====
+  // LOGO PROMPT
   page.drawText('LOGO DESIGN PROMPT', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   y -= 16;
   const logoLines = wrapText(brand.logoPrompt, maxWidth, mono, 9);
   for (const line of logoLines) {
-    if (y < 50) {
-      page = doc.addPage([595.28, 841.89]);
-      y = 800;
-    }
+    if (y < 50) { page = doc.addPage([595.28, 841.89]); y = 800; }
     page.drawText(line, { x: margin, y, size: 9, font: mono, color: rgb(0.22, 0.22, 0.22) });
     y -= 14;
   }
   y -= 12;
 
-  // Separator
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: 545, y },
-    thickness: 0.5,
-    color: rgb(0.9, 0.9, 0.9),
-  });
+  page.drawLine({ start: { x: margin, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
   y -= 20;
 
-  // ===== CONTENT PILLARS =====
-  page.drawText('CONTENT PILLARS', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
-  y -= 16;
-  y = drawBulletList(brand.socialContent, y, '✦');
+  y = drawBulletList(brand.socialContent, drawSection('Content Pillars', '', y), '✦');
+  y -= 8;
+  y = drawBulletList(brand.marketingCampaigns, drawSection('Marketing Campaigns', '', y), '◆');
   y -= 8;
 
-  // ===== MARKETING CAMPAIGNS =====
-  page.drawText('MARKETING CAMPAIGNS', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
-  y -= 16;
-  y = drawBulletList(brand.marketingCampaigns, y, '◆');
-  y -= 8;
-
-  // Separator
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: 545, y },
-    thickness: 0.5,
-    color: rgb(0.9, 0.9, 0.9),
-  });
+  page.drawLine({ start: { x: margin, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
   y -= 20;
 
-  // ===== LANDING PAGE HEADLINES =====
   page.drawText('LANDING PAGE HEADLINES', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
   y -= 16;
   for (const headline of brand.landingPageHeadlines) {
-    if (y < 50) {
-      page = doc.addPage([595.28, 841.89]);
-      y = 800;
-    }
-    page.drawRectangle({
-      x: margin,
-      y: y - 4,
-      width: maxWidth,
-      height: 22,
-      color: rgb(0.97, 0.97, 0.97),
-      borderColor: rgb(0.9, 0.9, 0.9),
-      borderWidth: 0.5,
-    });
+    if (y < 50) { page = doc.addPage([595.28, 841.89]); y = 800; }
+    page.drawRectangle({ x: margin, y: y - 4, width: maxWidth, height: 22, color: rgb(0.97, 0.97, 0.97), borderColor: rgb(0.9, 0.9, 0.9), borderWidth: 0.5 });
     page.drawText(headline, { x: margin + 8, y: y + 2, size: 10, font: bold, color: rgb(0.12, 0.12, 0.12) });
     y -= 28;
   }
   y -= 20;
 
-  // ===== FOOTER =====
-  page.drawLine({
-    start: { x: margin, y },
-    end: { x: 545, y },
-    thickness: 0.5,
-    color: rgb(0.9, 0.9, 0.9),
-  });
+  // FOOTER
+  page.drawLine({ start: { x: margin, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.9, 0.9, 0.9) });
   y -= 16;
-  page.drawText('Generated by BrandForge — brandforge.app', {
-    x: margin,
-    y,
-    size: 9,
-    font,
-    color: rgb(0.6, 0.6, 0.6),
-  });
+  page.drawText('Generated by BrandForge', { x: margin, y, size: 9, font, color: rgb(0.6, 0.6, 0.6) });
 
-  return await doc.save();
+  return doc.save();
 }
