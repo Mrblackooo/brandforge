@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BrandSystem } from '@/lib/types';
-import puppeteer from 'puppeteer';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,28 +14,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const html = generateBrandPDFHtml(brand);
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' },
-      printBackground: true,
-    });
-
-    await browser.close();
+    const pdfBuffer = await generatePdfBuffer(brand);
 
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${brand.brandName.replace(/[^a-zA-Z0-9]/g, '')}-brand-kit.pdf`,
-        'Content-Length': pdfBuffer.length.toString(),
       },
     });
   } catch (error) {
@@ -47,143 +31,304 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateBrandPDFHtml(brand: BrandSystem): string {
-  const colors = brand.colorPalette;
-  const primaryColor = colors[0] || '#0EA5E9';
-  const secondaryColor = colors[1] || '#0284C7';
+function hexToRgb(hex: string) {
+  const h = hex.replace('#', '');
+  return rgb(
+    parseInt(h.substring(0, 2), 16) / 255,
+    parseInt(h.substring(2, 4), 16) / 255,
+    parseInt(h.substring(4, 6), 16) / 255
+  );
+}
 
-  const colorSwatches = colors
-    .map(
-      (c) =>
-        `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <div style="width:24px;height:24px;border-radius:4px;background:${c};border:1px solid #e5e7eb"></div>
-          <span style="font-size:11px;font-family:monospace;color:#6b7280">${c}</span>
-        </div>`
-    )
-    .join('');
+function wrapText(text: string, maxWidth: number, font: any, fontSize: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = words[0] || '';
 
-  const values = brand.values
-    .map((v) => `<span style="display:inline-block;padding:4px 12px;background:${primaryColor}15;color:${primaryColor};border-radius:20px;font-size:12px;font-weight:500;margin:0 4px 4px 0">${v}</span>`)
-    .join('');
+  for (let i = 1; i < words.length; i++) {
+    const testLine = currentLine + ' ' + words[i];
+    const width = font.widthOfTextAtSize(testLine, fontSize);
+    if (width < maxWidth) {
+      currentLine = testLine;
+    } else {
+      lines.push(currentLine);
+      currentLine = words[i];
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
 
-  const tones = brand.toneOfVoice
-    .map((t) => `<span style="display:inline-block;padding:4px 12px;background:#f3e8ff;color:#7c3aed;border-radius:20px;font-size:12px;font-weight:500;margin:0 4px 4px 0">${t}</span>`)
-    .join('');
+async function generatePdfBuffer(brand: BrandSystem): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  let page = doc.addPage([595.28, 841.89]); // A4
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const mono = await doc.embedFont(StandardFonts.Courier);
 
-  const contentPillars = brand.socialContent
-    .map((s) => `<li style="margin-bottom:6px;font-size:13px;color:#374151">✦ ${s}</li>`)
-    .join('');
+  const primary = hexToRgb(brand.colorPalette[0] || '#0EA5E9');
 
-  const campaigns = brand.marketingCampaigns
-    .map((c) => `<li style="margin-bottom:6px;font-size:13px;color:#374151">◆ ${c}</li>`)
-    .join('');
+  let y = 800;
+  const margin = 50;
+  const maxWidth = 495;
 
-  const headlines = brand.landingPageHeadlines
-    .map(
-      (h) =>
-        `<div style="padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;font-size:13px;font-weight:500;color:#1f2937">${h}</div>`
-    )
-    .join('');
+  // Helper functions
+  const drawSection = (title: string, bodyText: string, startY: number) => {
+    page.drawText(title.toUpperCase(), {
+      x: margin,
+      y: startY,
+      size: 10,
+      font: bold,
+      color: rgb(0.6, 0.6, 0.6),
+    });
+    const lines = wrapText(bodyText, maxWidth, font, 11);
+    let cy = startY - 16;
+    for (const line of lines) {
+      if (cy < 50) {
+        page = doc.addPage([595.28, 841.89]);
+        cy = 800;
+      }
+      page.drawText(line, { x: margin, y: cy, size: 11, font, color: rgb(0.22, 0.22, 0.22) });
+      cy -= 16;
+    }
+    return cy - 12;
+  };
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    @page { margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; color: #111827; line-height: 1.5; }
-    .header { background: linear-gradient(135deg, ${primaryColor}, ${secondaryColor}); color: white; padding: 40px 50px; }
-    .header h1 { font-size: 36px; font-weight: 800; margin-bottom: 6px; }
-    .header .tagline { font-size: 18px; opacity: 0.9; font-style: italic; }
-    .content { padding: 30px 50px; }
-    .section { margin-bottom: 24px; }
-    .section h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #9ca3af; margin-bottom: 10px; }
-    .section p { font-size: 14px; color: #374151; line-height: 1.6; }
-    .two-col { display: flex; gap: 24px; }
-    .two-col > div { flex: 1; }
-    hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
-    .footer { text-align: center; padding: 20px 50px; color: #9ca3af; font-size: 11px; border-top: 1px solid #e5e7eb; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>${brand.brandName}</h1>
-    <p class="tagline">${brand.tagline}</p>
-  </div>
+  const drawBulletList = (items: string[], startY: number, bullet: string) => {
+    let cy = startY;
+    for (const item of items) {
+      if (cy < 50) {
+        page = doc.addPage([595.28, 841.89]);
+        cy = 800;
+      }
+      const text = `${bullet} ${item}`;
+      const lines = wrapText(text, maxWidth, font, 10);
+      for (const line of lines) {
+        page.drawText(line, { x: margin, y: cy, size: 10, font, color: rgb(0.22, 0.22, 0.22) });
+        cy -= 14;
+      }
+      cy -= 4;
+    }
+    return cy - 8;
+  };
 
-  <div class="content">
-    <div class="two-col section">
-      <div>
-        <h2>Mission</h2>
-        <p>${brand.mission}</p>
-      </div>
-      <div>
-        <h2>Vision</h2>
-        <p>${brand.vision}</p>
-      </div>
-    </div>
+  // ===== HEADER =====
+  // Gradient-like header background
+  page.drawRectangle({
+    x: 0,
+    y: 680,
+    width: 595.28,
+    height: 161.89,
+    color: primary,
+  });
 
-    <hr />
+  page.drawText(brand.brandName, {
+    x: margin,
+    y: 760,
+    size: 32,
+    font: bold,
+    color: rgb(1, 1, 1),
+  });
+  page.drawText(brand.tagline, {
+    x: margin,
+    y: 732,
+    size: 14,
+    font: font,
+    color: rgb(0.95, 0.95, 0.95),
+  });
 
-    <div class="section">
-      <h2>Target Audience</h2>
-      <p>${brand.targetAudience}</p>
-    </div>
+  y = 660;
 
-    <div class="section">
-      <h2>Core Values</h2>
-      <div>${values}</div>
-    </div>
+  // ===== MISSION & VISION =====
+  page.drawText('MISSION', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  const missionLines = wrapText(brand.mission, maxWidth, font, 11);
+  y -= 16;
+  for (const line of missionLines) {
+    page.drawText(line, { x: margin, y, size: 11, font, color: rgb(0.22, 0.22, 0.22) });
+    y -= 16;
+  }
+  y -= 8;
 
-    <div class="section">
-      <h2>Tone of Voice</h2>
-      <div>${tones}</div>
-    </div>
+  page.drawText('VISION', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  const visionLines = wrapText(brand.vision, maxWidth, font, 11);
+  y -= 16;
+  for (const line of visionLines) {
+    page.drawText(line, { x: margin, y, size: 11, font, color: rgb(0.22, 0.22, 0.22) });
+    y -= 16;
+  }
+  y -= 16;
 
-    <hr />
+  // Separator line
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: 545, y },
+    thickness: 0.5,
+    color: rgb(0.9, 0.9, 0.9),
+  });
+  y -= 20;
 
-    <div class="two-col section">
-      <div>
-        <h2>Color Palette</h2>
-        ${colorSwatches}
-      </div>
-      <div>
-        <h2>Typography</h2>
-        <p style="font-size:13px">${brand.typography}</p>
-      </div>
-    </div>
+  // ===== TARGET AUDIENCE =====
+  y = drawSection('Target Audience', brand.targetAudience, y);
+  y -= 8;
 
-    <hr />
+  // ===== VALUES =====
+  page.drawText('CORE VALUES', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 16;
+  for (const val of brand.values) {
+    if (y < 50) {
+      page = doc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+    page.drawRectangle({
+      x: margin,
+      y: y - 2,
+      width: font.widthOfTextAtSize(val, 10) + 16,
+      height: 18,
+      color: rgb(0.95, 0.95, 0.95),
+    });
+    page.drawText(val, { x: margin + 8, y, size: 10, font: bold, color: primary });
+    y -= 24;
+  }
+  y -= 8;
 
-    <div class="section">
-      <h2>Logo Design Prompt</h2>
-      <p style="font-family:monospace;font-size:12px;background:#f9fafb;padding:12px;border-radius:8px;line-height:1.6">${brand.logoPrompt}</p>
-    </div>
+  // ===== TONE OF VOICE =====
+  page.drawText('TONE OF VOICE', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 16;
+  for (const tone of brand.toneOfVoice) {
+    if (y < 50) {
+      page = doc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+    page.drawRectangle({
+      x: margin,
+      y: y - 2,
+      width: font.widthOfTextAtSize(tone, 10) + 16,
+      height: 18,
+      color: rgb(0.97, 0.94, 1),
+    });
+    page.drawText(tone, { x: margin + 8, y, size: 10, font: bold, color: rgb(0.48, 0.24, 0.93) });
+    y -= 24;
+  }
+  y -= 8;
 
-    <hr />
+  // Separator
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: 545, y },
+    thickness: 0.5,
+    color: rgb(0.9, 0.9, 0.9),
+  });
+  y -= 20;
 
-    <div class="section">
-      <h2>Content Pillars</h2>
-      <ul style="list-style:none;padding:0">${contentPillars}</ul>
-    </div>
+  // ===== COLOR PALETTE =====
+  page.drawText('COLOR PALETTE', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 20;
+  for (const color of brand.colorPalette) {
+    if (y < 50) {
+      page = doc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+    const c = hexToRgb(color);
+    page.drawRectangle({ x: margin, y: y - 2, width: 18, height: 18, color: c, borderColor: rgb(0.9, 0.9, 0.9), borderWidth: 0.5 });
+    page.drawText(color, { x: margin + 26, y, size: 9, font: mono, color: rgb(0.42, 0.42, 0.42) });
+    y -= 22;
+  }
+  y -= 8;
 
-    <div class="section">
-      <h2>Marketing Campaigns</h2>
-      <ul style="list-style:none;padding:0">${campaigns}</ul>
-    </div>
+  // ===== TYPOGRAPHY =====
+  y = drawSection('Typography', brand.typography, y);
+  y -= 8;
 
-    <hr />
+  // Separator
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: 545, y },
+    thickness: 0.5,
+    color: rgb(0.9, 0.9, 0.9),
+  });
+  y -= 20;
 
-    <div class="section">
-      <h2>Landing Page Headlines</h2>
-      ${headlines}
-    </div>
-  </div>
+  // ===== LOGO PROMPT =====
+  page.drawText('LOGO DESIGN PROMPT', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 16;
+  const logoLines = wrapText(brand.logoPrompt, maxWidth, mono, 9);
+  for (const line of logoLines) {
+    if (y < 50) {
+      page = doc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+    page.drawText(line, { x: margin, y, size: 9, font: mono, color: rgb(0.22, 0.22, 0.22) });
+    y -= 14;
+  }
+  y -= 12;
 
-  <div class="footer">
-    Generated by BrandForge — brandforge.app
-  </div>
-</body>
-</html>`;
+  // Separator
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: 545, y },
+    thickness: 0.5,
+    color: rgb(0.9, 0.9, 0.9),
+  });
+  y -= 20;
+
+  // ===== CONTENT PILLARS =====
+  page.drawText('CONTENT PILLARS', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 16;
+  y = drawBulletList(brand.socialContent, y, '✦');
+  y -= 8;
+
+  // ===== MARKETING CAMPAIGNS =====
+  page.drawText('MARKETING CAMPAIGNS', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 16;
+  y = drawBulletList(brand.marketingCampaigns, y, '◆');
+  y -= 8;
+
+  // Separator
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: 545, y },
+    thickness: 0.5,
+    color: rgb(0.9, 0.9, 0.9),
+  });
+  y -= 20;
+
+  // ===== LANDING PAGE HEADLINES =====
+  page.drawText('LANDING PAGE HEADLINES', { x: margin, y, size: 10, font: bold, color: rgb(0.6, 0.6, 0.6) });
+  y -= 16;
+  for (const headline of brand.landingPageHeadlines) {
+    if (y < 50) {
+      page = doc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+    page.drawRectangle({
+      x: margin,
+      y: y - 4,
+      width: maxWidth,
+      height: 22,
+      color: rgb(0.97, 0.97, 0.97),
+      borderColor: rgb(0.9, 0.9, 0.9),
+      borderWidth: 0.5,
+    });
+    page.drawText(headline, { x: margin + 8, y: y + 2, size: 10, font: bold, color: rgb(0.12, 0.12, 0.12) });
+    y -= 28;
+  }
+  y -= 20;
+
+  // ===== FOOTER =====
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: 545, y },
+    thickness: 0.5,
+    color: rgb(0.9, 0.9, 0.9),
+  });
+  y -= 16;
+  page.drawText('Generated by BrandForge — brandforge.app', {
+    x: margin,
+    y,
+    size: 9,
+    font,
+    color: rgb(0.6, 0.6, 0.6),
+  });
+
+  return await doc.save();
 }
