@@ -17,10 +17,8 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfBuffer = await generatePdfBuffer(brand);
-    const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
-    const arrayBuffer = await blob.arrayBuffer();
 
-    return new NextResponse(Buffer.from(arrayBuffer), {
+    return new Response(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${brand.brandName.replace(/[^a-zA-Z0-9]/g, '')}-brand-kit.pdf`,
