@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     const pdfBuffer = await generatePdfBuffer(brand);
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(Buffer.from(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${brand.brandName.replace(/[^a-zA-Z0-9]/g, '')}-brand-kit.pdf`,
